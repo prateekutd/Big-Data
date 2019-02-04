@@ -44,30 +44,5 @@ sqlResult.write.avro("/user/cloudera/problem2/products/result-sql");
 
 
 ----------------------------------------------------------------------------------
-sqoop import \
---connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
---username retail_dba \
---password cloudera \
---table products \
---target-dir /user/cloudera/products \
---as-textfile \
---fields-terminated-by '|' \
---delete-target-dir;
 
-hadoop fs rm -r  /user/cloudera/problem2/products/*
-
-hadoop fs -mkdir /user/cloudera/problem2/;
-hadoop fs -mkdir /user/cloudera/problem2/products;
-
-hadoop fs -mv /user/cloudera/products/* /user/cloudera/problem2/products/;
-
-hadoop fs -chmod 765 /user/cloudera/problem2/products/*;
-
-var products = sc.textfile("/user/cloudera/problem2/products").map(x => {var d = x.split('|');(d(0).toInt,d(1).toInt,d(2).toString,d(3).toString,d(4).toFloat,d(5).toString)});
-
-cass class Product(productID:Integer,productCatID: Integer, productName: String, productDesc:String, productPrice:Float, productImage:String);
-
-var productsDF = products.map(x=> Product(x._1,x._2,x._3,x._4,x._5,x._6)).toDF();
-
-productDF.registerTempTable("productDF");
 
