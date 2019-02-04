@@ -1,0 +1,394 @@
+###Sqoop###
+ls -ltr /data/ ----> to check the files in folder
+hadoop fs -ls (from downloaded path) (to paste path)
+hadoop fs -ls /home/cloudera/Downloads /user/prateek
+sqoop version (to check the verion )
+Connect string
+sqoop help (to check what all commands are available)
+ sqoop-list-databases or  sqoop list-databases
+ 
+ ##connecting to databases
+ sqoop list-databases \
+ --connect jdbc:mysql://ms.itversity.com:3306 \
+ --username retail_user \
+ --password itversity
+ 
+ sqoop list-tables \
+ --connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+ --username retail_user \
+ --password itversity
+ 
+ sqoop eval \
+ --connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+ --username retail_user \
+ --password itversity \
+ --query "SELECT * FROM orders LIMIT 10"
+ 
+ sqoop eval \
+  --connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+  --username retail_user \
+  --password itversity \
+  --query "INSERT INTO orders VALUES (10000, '2017-10-31 00:00:00.0', 100000, 'DUMMY')"
+ 
+ sqoop eval \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+	--username retail_user \
+	--password itversity \
+	--query "CREATE TABLE dummy (i INT)"
+
+sqoop list \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+	--username retail_user \
+	--password itversity \
+	
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--target-dir /user/prateek/sqoop_import/retail_db/order_items
+
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--num-mappers 1
+
+hadoop fs -ls /user/prateek/sqoop_import/retail_db
+hadoop fs -rm -R /user/prateek/sqoop_import/retail_db/order_items
+
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--num-mappers 1 \
+	--delete-target-dir
+	
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--num-mappers 1 \
+	--append
+
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items_nopk \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db 
+
+// Things to remember for split-by
+columns should be indexed
+values in the field should be sparse
+also often it should be sequence generated or evenly incremented
+it should not hava null values
+
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items_nopk \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--split-by order_item_order_id
+
+//if you want to split via text
+sqoop import \
+	-Dorg.apache.sqoop.splitter.allow_text_splitter=true \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table orders \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--split-by order_status
+
+//When to split without no PK
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items_nopk \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--autoreset-to-one-mapper
+// saving data in various file format
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--num-mappers 2 \
+	--as-sequencefile
+	
+//compressing the data
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--num-mappers 2 \
+	--as-textfile \
+	--compress
+
+//unzip the file
+gunzip part*.gz
+
+//compressing the data
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--num-mappers 2 \
+	--as-textfile \
+	--compress \
+	--compression-codec org.apache.hadoop.io.compress.SnappyCodec
+	(cd /etc/hadoop/conf \ ls -ltr \ vi core-site.xml search codec)
+
+	
+//Boundary Query
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--boundary-query 'select min(order_item_id), max(order_item_id) from order_items where order_item_id > 99999'
+	
+//Boundary Hard coding
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--boundary-query 'select 100000,172198'
+
+//Sqoop Import-columns and query
+//Suppose we want 5 columns out of 7 columns than we use column in sqoop
+//if we want to query something special than we use query commnand.
+//table and columns are mutually exclusive to query
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--columns order_item_order_id,order_item_id,order_item_subtotal \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--num-mappers 2 
+	
+//For query split by is complusory if mapper > 1,use target and $CONDITIONS
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--target-dir /user/prateek/sqoop_import/retail_db/orders_with_revenue \
+	--num-mappers 2 \
+	--query "select o.*, sum(oi.order_item_subtotal) order_revenue from orders o join order_items oi on o.order_id = oi.order_item_order_id and \$CONDITIONS group by o.order_id, o.order_date, o.order_customer_id, o.order_status" \
+	--split-by order_id
+	
+//Delimiters and handling nulls
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/hr_db \
+	--username hr_user \
+	--password itversity \
+	--table employees \
+	--warehouse-dir /user/prateek/sqoop_import/hr_db \
+	--null-non-string -1 \
+	--fields-terminated-by "\t" \
+	--lines-terminated-by ":"
+	
+//Incremental Import :- to upload the modified records
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--target-dir /user/prateek/sqoop_import/retail_db/orders \
+	--num-mappers 2 \
+	--query "select * from orders where order_date like '2013-%'" \
+	--split-by order_id
+	
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--target-dir /user/prateek/sqoop_import/retail_db/orders \
+	--num-mappers 2 \
+	--query "select * from orders where \$CONDITIONS and order_date like '2014-01%'" \
+	--split-by order_id \
+	--append   
+append will add data to exsisting directory
+If we are using query than split-by is complusory even if we have a primary key.
+
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--target-dir /user/prateek/sqoop_import/retail_db/orders \
+	--num-mappers 2 \
+	--table orders \
+	--where "order_date like '2014-02%'" \
+	--append   
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--target-dir /user/prateek/sqoop_import/retail_db/orders \
+	--num-mappers 2 \
+	--table orders \
+	--check-column order_date \
+	--incremental append \
+	--last-value '2014-02-28'
+	
+//Getting data into Hive Database(log into Hive Database first)
+
+create database prateek_sqoop_import ;
+use prateek_sqoop_import;
+insert into table t values (1);
+select * from t;
+
+
+	
+//Hive Import :- If you want to do hive import just say hive import in commnand
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--hive-import \
+	--hive-database prateek_sqoop_import \
+	--hive-table order_items \
+	--num-mappers 2
+//We can also give hive database.table name
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--hive-import \
+	--hive-table prateek_sqoop_import.order_items \
+	--num-mappers 2
+
+above commands will import data into HIVE.
+after that log into Hive,use prateek_sqoop_import,show tables,descrbe formatted order_items;
+after that copy the path hdfs://quickstart.cloudera:8020/user/hive/warehouse/prateek_sqoop_import.db/order_items
+hadoop fs -ls hdfs://quickstart.cloudera:8020/user/hive/warehouse/prateek_sqoop_import.db/order_items
+hadoop fs -get hdfs://quickstart.cloudera:8020/user/hive/warehouse/prateek_sqoop_import.db/order_items prateek_sqoop_import_order_items
+
+
+//Managing tables while performing hive import
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--hive-import \
+	--hive-database prateek_sqoop_import \
+	--hive-overwrite \
+	--num-mappers 2
+	
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table orders \
+	--hive-import \
+	--hive-database prateek_sqoop_import \
+	--hive-table orders \
+	--hive-overwrite \
+	--num-mappers 2
+
+
+sqoop import \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--table order_items \
+	--hive-import \
+	--hive-database prateek_sqoop_import \
+	--create-hive-table \
+	--num-mappers 2
+	
+
+
+above 2 commands are mutually exclusive and will faill if the table already exsists
+
+//Import all tables
+sqoop import-all-tables \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+	--username retail_user \
+	--password itversity \
+	--warehouse-dir /user/prateek/sqoop_import/retail_db \
+	--autoreset-to-one-mapper
+  
+  
+//Exporting data
+create table daily_revenue as
+select order_date, sum(order_item_subtotal) daily_revenue
+from orders join order_items on
+order_id = order_item_order_id
+where order_date like '2013-07%'
+group by order_date;
+
+sqoop export \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+	--username retail_user \
+	--password itversity \
+	--export-dir /user/hive/warehouse/prateek_sqoop_import.db/daily_revenue \
+	--table daily_revenue \
+	--input-fields-terminated-by "\001" \
+	--num-mappers 1
+
+//column mapping
+match mysql columns and specify which all columns to be uploaded i insert,make sure columns which are exluded are nullable.
+
+sqoop export \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+	--username retail_user \
+	--password itversity \
+	--export-dir /user/hive/warehouse/prateek_sqoop_import.db/daily_revenue \
+	--table daily_revenue_demo \
+	--columns order_date,revenue \
+	--input-fields-terminated-by "\001" \
+	--num-mappers 1
+
+//Sqoop Export-Update and Insert
+sqoop export \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+	--username retail_user \
+	--password itversity \
+	--export-dir /user/hive/warehouse/prateek_sqoop_import.db/daily_revenue \
+	--table daily_revenue \
+	--update-key order_date \   (this shoud be mostly primary key and it should match with soure table)
+	--update-mode allowinsert \
+	--input-fields-terminated-by "\001" \
+	--num-mappers 1
+	
+	
+//exporting Data - Stage table
+stage table should be same as target table and it shud be empty
+sqoop export \
+	--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+	--username retail_user \
+	--password itversity \
+	--export-dir /user/hive/warehouse/prateek_sqoop_import.db/daily_revenue \
+	--table daily_revenue \
+	--staging-table daily_revenue_stage \
+	--clear-staging-table \
+	--input-fields-terminated-by "\001" 
+
+hive table:daily_revenue -> mysql table: daily_revenue_stage
+insert into daily_revenue select * from daily_revenue_stage;
+
+

@@ -1,0 +1,168 @@
+mysql -h localhost -u retail_db -p
+
+use retail_dba;
+
+describe products;
+
+create table products_replica select * from products;
+describe products_replica;
+
+alter table product_replica add primary key (product_id);
+
+alter table products_replica add column(product_grade int,product_sentiment varchar(100));
+
+update products_replica set product_grade = 1 where product_price > 500;
+update product_replica set product_sentiment = 'WEAK' where product_price between 300 and 500;
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--target-dir /user/cloudera/problem5/products-text \
+-m3 \
+--as-textfile \
+--fields-terminated-by '|' \
+--lines-terminated-by '\n' \
+--null-string "NOT AVAILABLE" \
+--null-non-string -1 \
+--where "product_id between 1 and 1000" \
+--outdir /home/cloudera/sqoop1 \
+--delete-target-dir \
+--boundary-query "SELECT MIN(product_id), MAX(product_id) FROM products_replica where product_id between 1 and 1000";
+
+
+In Mysql 
+select product_grade,count(*) from product_replica group by product_grade;
+this to check null value count.
+
+sqoop import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--target-dir  /user/cloudera/problem5/products-text-part1  \
+--fields-terminated-by '*' \
+--lines-terminated-by '\n' \
+--null-non-string -1000 \
+--null-string "NA" \
+-m 2 \
+--where "product_id <= 1111 " \
+--outdir /home/cloudera/sqoop2 \
+--boundary-query "select min(product_id), max(product_id) from products_replica where product_id <= 1111";
+
+sqoop import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--target-dir  /user/cloudera/problem5/products-text-part1  \
+--fields-terminated-by '*' \
+--lines-terminated-by '\n' \
+--null-non-string -1000 \
+--null-string "NA" \
+-m 2 \
+--where "product_id <= 1111 " \
+--outdir /home/cloudera/sqoop2 \
+--boundary-query "select min(product_id), max(product_id) from products_replica where product_id <= 1111";
+
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--target-dir /user/cloudera/problem5/products-text-part2 \
+--fields-terminated-by '*' \
+--lines-terminated-by '\n' \
+--null-string "NA" \
+--null-non-string -1000 \
+--where "product_id > 1111" \
+--as-textfile \
+--outdir /home/cloudera/sqoop3 \
+--delete-target-dir \
+-m 5 \
+--boundary-query "select min(product_id),max(product_id) from products_replica where product_id > 1111";
+
+Merge command:-
+sqoop merge --help > sm.txt
+gedit sm.txt
+go to out dir file to check class name
+
+sqoop merge --class-name products_replica --jar-file /tmp/sqoop-cloudera/compile/b95b5a0d308d3329a4a060e3a41cea10/products_replica.jar --merge-key product_id --new-data /user/cloudera/problem5/products-text-part2 --onto /user/cloudera/problem5/products-text-part1 --target-dir /user/cloudera/problem5/products-text-both-parts;
+
+
+sqoop job --create first_sqoop_job \
+-- import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--target-dir /user/cloudera/problem5/product-incremental \
+--check-column product_id \
+--incremental append \
+--last-value 0;
+
+insert into products_replica values (1346,2,'something 1','something 2',300.00,'not avaialble',3,'STRONG');
+insert into products_replica values (1347,5,'something 787','something 2',356.00,'not avaialble',3,'STRONG');
+
+sqoop job --exec first_sqoop_job
+
+insert into products_replica values (1376,4,'something 1376','something 2',1.00,'not avaialble',3,'WEAK');
+insert into products_replica values (1365,4,'something 1376','something 2',10.00,'not avaialble',null,'NOT APPLICABLE');
+
+sqoop job --exec first_sqoop_job
+
+create table products_hive  (product_id int, product_category_id int, product_name string, product_description string, product_price float, product_imaage string,product_grade int,  product_sentiment string);
+
+sqoop job \
+--create hive_sqoop_job \
+-- import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username "retail_dba" \
+--password "cloudera" \
+--table products_replica  \
+--check-column product_id \
+--incremental append \
+--last-value 0 \
+--hive-import \
+--hive-table products_hive \
+--hive-database problem5;
+
+create database problem5;
+
+use problem5;
+
+create table products_hive  (product_id int, product_category_id int, product_name string, product_description string, product_price float, product_imaage string,product_grade int,  product_sentiment string);
+
+sqoop job --exec hive_sqoop_job
+
+insert into products_replica values (1378,4,'something 1376','something 2',10.00,'not avaialble',null,'NOT APPLICABLE');
+insert into products_replica values (1379,4,'something 1376','something 2',10.00,'not avaialble',null,'NOT APPLICABLE');
+
+sqoop job --exec hive_sqoop_job
+
+select * from products_hive
+
+insert into table products_hive values (1380,4,'something 1380','something 2',8.00,'not avaialble',3,'NOT APPLICABLE');
+
+insert into table products_hive values (1381,4,'something 1380','something 2',8.00,'not avaialble',3,'NOT APPLICABLE');
+
+create table products_external  (product_id int(11) primary Key, product_grade int(11), product_category_id int(11), product_name varchar(100), product_description varchar(100), product_price float, product_impage varchar(500), product_sentiment varchar(100));
+
+sqoop export \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--export-dir /user/hive/warehouse/problem5.db/products_hive/ \
+--input-fields-terminated-by '\001' \
+--input-null-non-string "null" \
+--input-null-string "null" \
+--update-mode allowinsert \
+--update-key product_id \
+--columns "product_id,product_category_id,product_name,product_description,product_price,product_impage,product_grade,product_sentiment" --table products_external;
+
+select count(*) from problem5.products_hive;
+
+select count(*) from products_replica;
+

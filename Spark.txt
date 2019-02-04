@@ -1,0 +1,405 @@
+get https://archive.apache.org/dist/spark/spark-1.6.3/spark-1.6.3-bin-hadoop2.6.tgz
+
+// to start spark in cloudera
+spark-shell --master yarn
+sc (this is a web service a spark context)
+sqlContext (both are created when spark is launched)
+
+
+
+//to set executor
+spark-shell --master yarn \
+ --num-executors 1 \
+ --executor-memory 512M
+ 
+//Initialize programmatically to create configuration object and sc
+import org.apache.spark.{SparkConf, SparkContext}
+val conf = new SparkConf().setAppName("Daily Revenue").setMaster("yarn-client")
+val sc = new SparkContext(conf)
+sc.getConf.getAll
+
+//how to create RDD
+start spark
+do sc. and it will give you options
+
+//creating RDD - validating from file system
+hadoop fs -ls /public/retail_db/orders
+hadoop fs -tail /public/retail_db/orders/part-00000
+
+//Creating RDD using spark-shell
+spark-shell --master yarn \
+ --num-executors 1 \
+ --executor-memory 512M
+
+ val orders = sc.textFile("/public/retail_db/orders")
+ 
+ orders.first (to access first record)
+ 
+ orders.take(10)  (will show first 10 records as collection)
+
+//creating RDD out of local file system
+ls -ltr /home/cloudera/Data/retail_db/products/part-00000 (to check the files in local file system)
+
+val productsRaw = Source.fromFile("/home/cloudera/Data/retail_db/products/part-00000").getLines (to import file using scala)
+val productsRaw = Source.fromFile("/home/cloudera/Data/retail_db/products/part-00000").getLines.toList
+now file will be taken as List and now we will convert into RDD using SC
+val productsRDD = sc.parallelize(productsRaw) (input should be a list so we will convert file into list)
+productsRDD.take(10)
+
+//Previewing data from RDD
+Lazy evaluation :- code wont be executed immediately 
+DAG :- Directed Acyclic Graph
+orders.toDebugString (we can run this API against the RDD to check the DAG,no action is performed)
+only when the action is performed than only code will be executed.
+orders.takeSample(true, 100) (will show 100 random record)
+orders.takeSample(true, 100).foreach(println)
+orders.collect
+never use foreach to print the data directly on RDD
+
+//Reading different file formats
+sqlContext is used to read different file formats
+
+sqlContext.load (here we have to pass path and file format)
+sqlContext.read. (we can give file format name)
+
+val ordersDF = sqlContext.read.json("/public/retail_db_json/orders") (to open data via sqlContext)
+ordersDF.show (to check the data uploaded)
+ordersDF.printSchema(to print the schema for the dataframe)
+
+ordersDF.select("order_id","order_date") (to select specific coulmns in dataframe)
+ordersDF.select("order_id","order_date").show
+
+sqlContext.load("/public/retail_db_json/orders","json")  (anaother way to download the file just mention the file format in the second argument)
+
+
+//String manipulation using scala
+val orders = sc.textFile("/public/retail_db/orders")
+
+val str = orders.first
+
+val a = str.split(",") (datatype will be of type string)
+
+val orderID = a(0)
+
+val orderID = a(0).toInt
+
+a(1).contains("2017")
+
+val orderDate = a(1)
+
+orderDate.substring(0, 10)  (first argument is index and second one is length)
+orderDate.substring(11)  (it will print everything after index 11)
+
+orderDate.replace('-','/') (- is replaced with /)
+
+orderDate.indexof("2") (will give the first occurance of 2)
+orderDate.indexof("2", 2) (will give the second occurance of 2)
+
+//Row level transformation using map
+ map,flatMap,mapPartitions,mapPartitionsWithIndex
+
+for map there will be one input and one output,
+for flatmap the will be one input and zero or more output
+
+val str = orders.first
+str.split(',')(1).substring(0, 10).replace("-","").toInt
+
+val orderDates =orders.map((str: String) => str.split(',')(1).substring(0, 10).replace("-","").toInt)
+
+now converting them into key value pair
+
+val orderPairedRDD = orders.map(order => {
+val o = order.split(",")
+(o(0).toInt, o(1).substring(0, 10).replace("-","").toInt)})
+
+
+//Row level transformation using flatmap
+val l = ("Hello", "How are you doing", "Let us perform word count", "As part of word count program","we will see how many times each word repeat")
+val l_rdd = sc.parallelize(l)
+ in flatmap return is a collection (traversableonce)
+ val l_flatMap = l_rdd.flatMap(ele => ele.split(" "))
+
+ in map the conversion is array string where as for flatmap its rdd string
+val wordCount = l_flatMap.map(word => (word, 1)).countByKey  (you can use anything except 1 we just need key value pair)
+
+//Filtering the data
+filtering can be horizontal or vertical
+map is used for verical to select columns
+horizontal for rows use filter
+
+val orders = sc.textFile("/public/retail_db/orders")
+orders.filter            (filter should except a string type and return a boolean)
+
+orders.filter(order =>order.split(",")(3) == "COMPLETE").take(10).foreach(println)
+
+now to check complete and closed orders
+val s = orders.first
+s.contains("COMPLETE") || s.contains("CLOSED")
+s.split(",")(3) == "COMPLETE" || s.split(",")(3) == "CLOSED"
+(s.split(",")(3) == "COMPLETE" || s.split(",")(3) == "CLOSED") && (s.split(",")(1).contains("2013-07-25"))
+
+orders.map(order => order.split(",")(3)).distinct.collect.foreach(println)
+
+val ordersFiltered = orders.filter(order => {
+	val o = order.split(",")
+	(o(3) == "COMPLETE" || o(3) == "CLOSED") && (o(1).contains("2013-09"))
+	})
+
+//Joins 
+inner f
+Before joins we have to convert data into pairedRDD or key values pairs.
+val orders = sc.textFile("/public/retail_db/orders")
+val orderItems = sc.textFile("/public/retail_db/order_items")
+val ordersMap = orders.map(order => (order.split(",")(0).toInt, order.split(",")(1).substring(0,10)))
+val orderItemsMap = orderItems.map(orderItems => {
+	val oi = orderItems.split(",")
+	(oi(1).toInt,oi(4).toFloat)
+})
+
+val ordersJoin = ordersMap.join(ordersItemsMap) (to join two tuples)
+
+//Outer join
+val orders = sc.textFile("/public/retail_db/orders")
+val orderItems = sc.textFile("/public/retail_db/order_items")
+val ordersMap = orders.map(order => (order.split(",")(0).toInt, order))
+val orderItemsMap = orderItems.map(orderItems => {
+	val oi = orderItems.split(",")
+	(oi(1).toInt,orderItems)
+})
+
+val ordersLeftOuterJoin = ordersMap.leftOuterJoin(orderItemsMap)
+
+we will extract all those orders which dont have any entry
+val ordersLeftOuterJoinFilter = ordersLeftOuterJoin.filter(order => order._2._2 == None)
+do foreach and count
+
+val ordersWithNoorderItem = ordersLeftOuterJoinFilter.map(order => order._2._1)
+
+//Aggregations using actions(groupByKey,reduceByKey,aggregateByKey)(reduce)
+val orders = sc.textFile("/public/retail_db/orders")
+orders.map(order =>(order.split(",")(3),"")).countByKey.foreach(println)
+
+foreach does not work on RDD
+
+val orderItemsRevenue = orderItems.map(oi => oi.split(",")(4).toFloat)
+
+orderItemsRevenue.reduce 
+reduce function takes 2 arguments and return one value
+orderItemsRevenue.reduce((total, revenue) => total + revenue)
+val orderItemsMaxRevenue = orderItemsRevenue.reduce((total, revenue) =>{
+	if(total < revenue) revenue else total
+})
+
+
+//Combiner tells which API should be used
+reduceByKey,aggregateByKey yield better performance over groupByKey
+groupByKey does not use combiner it just group the data
+
+
+1)get revenue per order_id.get data in descending order by order_item_subtotal for each order_id
+
+val orderItems = sc.textFile("/public/retail_db/order_items")
+val orderItemsMap = orderItems.map(oi => (
+	oi.split(",")(1).toInt, oi.split(",")(4).toFloat))
+
+val orderItemsGBK = orderItemsMap.groupByKey
+groupByKey will return data in compact buffer which is iterable
+
+org.apache.spark.util.collection (it will show in memory class of a collection)
+
+(converting to list)
+val l = Iterable(119.98, 400.0, 399.98, 199.95, 199.98)
+
+//to get revenue per order id we need to apply transforamtion
+orderItemsGBK.map(rec => (rec._1,rec._2.toList.sum)).take(10).foreach(println)
+//to sorted the data in descending order by order_item_subtotal for each order_id
+val ordersSortedByRevenue = orderItemsGBK.flatMap(rec => {
+	rec._2.toList.sortBy(o => -o).map(k => (rec._1, k))
+})
+
+//reduceByKey
+val orderItems = sc.textFile("/public/retail_db/order_items")
+val orderItemsMap = orderItems.map(oi => (
+	oi.split(",")(1).toInt, oi.split(",")(4).toFloat))
+	
+val revenuePerOrderId = orderItemsMap.
+	reduceByKey((total, revenue) => total + revenue)
+	
+val minRevenuePerOrderId = orderItemsMap.
+	reduceByKey((min, revenue) => if(min > revenue) revenue else min)
+
+to verify o/p	
+orderItemsMap.sortByKey().take(10).foreach(println)
+minRevenuePerOrderId.sortByKey().take(10).foreach(println)
+
+
+//aggregateByKey
+val orderItems = sc.textFile("/public/retail_db/order_items")
+val orderItemsMap = orderItems.map(oi => (
+	oi.split(",")(1).toInt, oi.split(",")(4).toFloat))
+
+(order_id, order_item_subtotal) is input, aggregateByKey is using a tuple as output so we initializing it as a tuple.
+val revenueAndMaxPerProductId = orderItemsMap.
+	aggregateByKey((0.0, 0.0))(
+	(inter, subtotal) => (inter._1 + subtotal, if(subtotal > inter._2) subtotal else inter._2),
+	(total, inter) => (total._1 + inter._1, if(total._2 > inter._2) total._2 else inter._2)
+	)
+(order_id, (order_revenue, max_order_item_subtotal))
+
+//Sort by key
+for sort by key the data has to be paired RDD
+
+val products = sc.textFile("/public/retail_db/products")
+val productsMap = products.
+	filter(product => product.split(",")(4) != "").
+	map(product => ((product.split(",")(1).toInt, product.split(",")(4).toFloat),product))
+	
+val productsSortedByCategoryId = productMap.sortByKey()
+or 
+val productsSortedByCategoryId = productMap.sortByKey(false) (both will be in descending order)
+
+what if we need one in descending order and one in ascending order
+val productsMap = products.
+	filter(product => product.split(",")(4) != "").
+	map(product => ((product.split(",")(1).toInt, -product.split(",")(4).toFloat),product))
+
+to discard the key
+val productsSortedByCategoryId = productMap.sortByKey(rec => rec._2)
+
+
+
+//Ranking - Global (details of top 10 products)
+val products = sc.textFile("/public/retail_db/products")
+val productsMap = products.
+	filter(product => product.split(",")(4) != "").
+	map(product => (product.split(",")(4).toFloat),product))
+
+val productsSortedByPrice = productMap.sortByKey(false)
+productSortedByPrice.take(10).foreach(println)
+
+In the method above duplicates are repeated
+anaother method is shown below:-
+
+val products = sc.textFile("/public/retail_db/products")
+products.
+	filter(product => product.split(",")(4) != "").
+	takeOrdered(10)(Ordering[Float].reverse.on(product => product.split(",")(4).toFloat)).
+	foreach(println)
+	
+ordering is scala class and it can take any primitive data types
+
+//By Key Ranking (TO get N priced products with in each product category)
+val products = sc.textFile("/public/retail_db/products")
+val productsMap = products.
+	filter(product => product.split(",")(4) != "").
+	map(product => (product.split(",")(1).toInt, product))
+	
+val productsGroupByCategory = productsMap.groupByKey (it will have a RDD with int and iterable which is collection)
+
+//Get TopNProces using Scala Collections API
+val productsIterable = productsGroupByCategory.first._2
+
+def getTopNPricedProducts(productsIterable: Iterable[String], topN: Int):Iterable[String] = {
+	val productPrices = productsIterable.map(p => p.split(",")(4).toFloat).toSet
+	val topNPrices = productPrices.toList.sortBy(p => -p).take(topN)
+	
+	val productsSorted = productsIterable.toList.sortBy(product => -product.split(",")(4).toFloat)
+	val minOfTopNPrices = topNPrices.min
+	
+	val  topNPricedProducts = productsSorted.takeWhile(product => product.split(",")(4).toFloat >= minOfTopNPrices)
+	
+	topNPricedProducts
+	
+}
+
+getTopNPricedProducts(productsIterable, 5)
+
+val productsIterable = productsGroupByCategory.first._2
+val productPrices = productsIterable.map(p => p.split(",")(4).toFloat).toSet
+val topNPrices = productPrices.toList.sortBy(p => -p).take(5)
+
+Get all the products in descending order by price
+val productsSorted = productsIterable.toList.sortBy(product => -product.split(",")(4).toFloat)
+
+val topNPrices = productPrices.toList.sortBy(p => -p).take(5)
+val minOfTopNPrices = topNPrices.min
+
+val  topNPricedProducts = productsSorted.takeWhile(product => product.split(",")(4).toFloat >= minOfTopNPrices)
+(takewhile run upto the time the condition returns false)
+
+
+
+//get top N products by category using groupByKey,flatMap, Scala function
+if you want a collection use map and if you want individual records than use flatMap
+anything which we will pass is of tuple
+
+val top3PricedProductsPerCategory = productsGroupByCategory.flatMap(rec => getTopNPricedProducts(rec._2, 3))
+top3PricedProductsPerCategory.collect.foreach(println)
+
+//Set operations - Union,intersect,distinct as well as minus
+val orders = sc.textFile("/public/retail_db/orders")
+val customers_201308 = orders.
+	filter(order => order.split(",").contains("2013-08")).
+	map(order => order.split(",")(2).toInt)
+val customers_201309 = orders.
+	filter(order => order.split(",").contains("2013-09")).
+	map(order => order.split(",")(2).toInt)
+
+get all the customers who placed orders in 2013 august and 2013 september
+val customers_201308_and_201309 = customers_201308.intersection(customers_201309)
+val customers_201308_and_201309.count
+val customers_201308_and_201309.distinct.count
+
+get all unique customers who placed orders in 2013 august or 2013 september
+val customers_201308_union_201309 =customers_201308.union(customers_201309).distinct
+val customers_201308_union_201309.count
+val customers_201308_union_201309.distinct.count
+
+get all customers who placed orders in 2013 august but not in 2013 	september(leftOuterJoin requires key value pair) 
+val customer_201308_minus_201309 = customers_201308.map(c => (c,1)).
+		leftOuterJoin(customers_201309.map(c =>(c,1))).
+		filter(rec => rec._2._2 == None).
+		map(rec => rec._1).distinct
+		
+//Saving RDD to HDFS
+val orders = sc.textFile("/public/retail_db/orders")
+
+val orderCountByStatus = orders.
+	map(order => (order.split(",")(3),1)).
+	reduceByKey((total, element) => total + element)
+orderCountByStatus.saveAsTextFile("/user/cloudera/prateek/order_count_by_status")
+
+to preview  the data
+sc.textFile("/user/cloudera/prateek/order_count_by_status").collect.foreach(println)
+
+or
+val orders = sc.textFile("/public/retail_db/orders")
+
+val orderCountByStatus = orders.
+	map(order => (order.split(",")(3),1)).
+	reduceByKey((total, element) => total + element)
+
+orderCountByStatus.
+	map(rec => rec._1 + "\t" + rec._2).
+	saveAsTextfile("/home/cloudera/prateek/order_count_by_status")
+
+//Saving RDD to HDFS using compression
+cd /etc/hadoop/conf
+vi core-site.xml
+pwd
+vi core-site.xml
+search for codec
+
+orderCountByStatus.saveAsTextFile("/user/cloudera/prateek/order_count_by_status_snappy, classof[org.apache.hadoop.io.compress.SnappyCodec])
+
+to validate run hadoop fs -ls
+and than sc.textFile("path").collect.foreach(println)
+
+//Saving data in other file formats
+when to save as orc,json,parquet,avro data must be converted into dataframe
+
+val ordersDF = sqlContext.read.json("/user/public/retail_db_json/orders")
+ordersDF.save.("/user/prateek/orders_parquet", "parquet")
+sqlContext.load("/user/prateek/orders_parquet", "parquet").show
+ordersDF.write.orc("/user/prateek/orders_orc")
+sqlContext.read.orc("/user/prateek/orders_orc").show

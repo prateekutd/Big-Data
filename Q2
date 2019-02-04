@@ -1,0 +1,73 @@
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products \
+--target-dir /user/cloudera/products \
+--as-textfile \
+--fields-terminated-by '|' \
+--delete-target-dir;
+
+
+hadoop fs -mkdir /user/cloudera/problem2;
+hadoop fs -mkdir /user/cloudera/problem2/products;
+hadoop fs -mv /user/cloudera/products/* /user/cloudera/problem2/products/;
+
+hadoop fs -chmod 765 /user/cloudera/problem2/products/*
+
+hadoop fs -tail /user/cloudera/problem2/products/part-m-00000
+
+mysql -h localhost -u retail_dba -p
+use retail_dba;
+show products;
+
+var products = sc.textFile("/user/cloudera/problem2/products").map(p=> {
+var xi = p.split('|')
+(xi(0).toInt,xi(1).toInt,xi(2).toString,xi(3).toString,xi(4).toFloat,xi(5).toString)
+});
+
+case class Products(product_id:Integer,product_category_id:Integer,product_name:String,product_description:String,product_price:Float,product_image:String);
+
+
+var productsDF = products.map(x=> Products(x._1,x._2,x._3,x._4,x._5,x._6)).toDF();
+productsDF.show();
+productsDF.printSchema();
+
+productsDF.registerTempTable("products");
+var sqlResult =sqlContext.sql("select product_category_id,max(product_price) as maximum_price,count(distinct(product_id)) as total_products,cast(avg(product_price) as decimal (10,2)) as average_price,min(product_price) as minimum_price from products where product_price < 100 group by product_category_id order by product_category_id");
+
+sqlResult.show();
+
+import com.databricks.spark.avro._
+sqlContext.setConf("spark.sql.avro.compression.codec","snappy");
+sqlResult.write.avro("/user/cloudera/problem2/products/result-sql");
+
+
+----------------------------------------------------------------------------------
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products \
+--target-dir /user/cloudera/products \
+--as-textfile \
+--fields-terminated-by '|' \
+--delete-target-dir;
+
+hadoop fs rm -r  /user/cloudera/problem2/products/*
+
+hadoop fs -mkdir /user/cloudera/problem2/;
+hadoop fs -mkdir /user/cloudera/problem2/products;
+
+hadoop fs -mv /user/cloudera/products/* /user/cloudera/problem2/products/;
+
+hadoop fs -chmod 765 /user/cloudera/problem2/products/*;
+
+var products = sc.textfile("/user/cloudera/problem2/products").map(x => {var d = x.split('|');(d(0).toInt,d(1).toInt,d(2).toString,d(3).toString,d(4).toFloat,d(5).toString)});
+
+cass class Product(productID:Integer,productCatID: Integer, productName: String, productDesc:String, productPrice:Float, productImage:String);
+
+var productsDF = products.map(x=> Product(x._1,x._2,x._3,x._4,x._5,x._6)).toDF();
+
+productDF.registerTempTable("productDF");
+

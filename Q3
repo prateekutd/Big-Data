@@ -1,0 +1,72 @@
+sqoop import-all-tables \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--warehouse-dir /user/hive/warehouse/retail_stage.db \
+--compress \
+--compression-codec org.apache.hadoop.io.compress.SnappyCodec \
+--as-avrodatafile \
+-m 1
+
+to transfer avro file in hive metastore we need schema
+
+mkdir avro_schema
+cd avro_schema
+hadoop fs -get /user/hive/warehouse/retail_stage.db/orders/part-m-00000.avro
+avro-tools getschema part-m-00000.avro > orders.avsc
+hadoop fs -mkdir /user/hive/schemas
+hadoop fs -ls /user/hive/schemas/order
+hadoop fs -copyFromLocal orders.avsc /user/hive/schemas/order
+
+create external table orders_sqoop
+STORED AS AVRO
+LOCATION '/user/hive/warehouse/retail_stage.db/orders'
+TBLPROPERTIES('avro.schema.url'='/user/hive/schemas/order/orders.avsc');
+
+select * from orders_sqoop as X where X.order_date in (select inner.order_date from (select Y.order_date, count(1) as total_orders from orders_sqoop as Y group by Y.order_date order by total_orders desc, Y.order_date desc limit 1) inner);
+
+create database retail;
+
+create table orders_avro
+(order_id int,
+order_date date,
+order_customer_id int,
+order_status string)
+partitioned by (order_month string)
+STORED AS AVRO;
+
+insert overwrite table orders_avro partition (order_month)
+select order_id, to_date(from_unixtime(cast(order_date/1000 as int))), order_customer_id, order_status, substr(from_unixtime(cast(order_date/1000 as int)),1,7) as order_month from default.orders_sqoop;
+
+select * from orders_avro as X where X.order_date in (select inner.order_date from (select Y.order_date, count(1) as total_orders from orders_avro as Y group by Y.order_date order by total_orders desc, Y.order_date desc limit 1) inner);
+
+hadoop fs -get /user/hive/schemas/order/orders.avsc
+
+gedit orders.avsc
+hadoop fs -copyFromLocal -f orders.avsc /user/hive/schemas/order/orders.avsc
+
+insert into table orders_sqoop values (8888888,1374735600000,11567,"xyz",9,"CLOSED");
+insert into table orders_sqoop values (8888889,1374735600000,11567,"xyz",9,"CLOSED");
+
+select * from orders_sqoop as X where X.order_date in (select inner.order_date from (select Y.order_date, count(1) as total_orders from orders_sqoop as Y group by Y.order_date order by total_orders desc, Y.order_date desc limit 1) inner);
+
+---------------------------------------------------
+sqoop import-all-tables \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--warehouse-dir "/user/hive/warehouse/retail_stage" \
+--compress \
+--compression-codec org.apache.hadoop.io.compress.SnappyCodec \
+--as-parquetfile \
+-m 1;
+
+hadoop fs -mkdir /user/hive/pschemas;
+hadoop fs -mkdir /user/hive/pschemas/order;
+hadoop fs copyFromLocal orders.parquet /user/hive/schema/order;
+
+create external table orders_sqoop
+STORED AS PARQUET
+LOCATION '/user/hive/warehouse/retail_stage/orders'
+TBLPROPERTIES ('parquet.schema.url'='/user/hive/pschemas/order/orders.parquet')
+

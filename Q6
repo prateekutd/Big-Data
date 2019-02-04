@@ -1,0 +1,38 @@
+show databases;
+
+create database problem6;
+
+sqoop import-all-tables \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--warehouse-dir /user/hive/warehouse/problem6.db \
+--hive-import
+--hive-database problem6 \
+--create-hive-table \
+--as-textfile;
+
+we need to check hive.xml file in saprk/conf and create a simlink if its not there.
+sudo ln -s hive path to spark path
+var hc = new org.apache.spark.sql.hive.HiveContext(sc);
+
+var sqlResult = hc.sql("select d.department_id,p.product_id,p.product_name,p.product_price,dense_rank() over(partition by d.department_id order by p.product_price) as product_dense_price_rank from products p inner join categories c on c.category_id = p.product_category_id inner join departments d on c.category_department_id = d.department_id  order by d.department_id, product_dense_price_rank desc")
+
+var sqlResult = hc.sql("select   d.department_id,   p.product_id,   p.product_name,  p.product_price,  rank() over (partition by d.department_id order by p.product_price) as product_price_rank,   dense_rank() over (partition by d.department_id order by p.product_price) as product_dense_price_rank   from products p   inner join categories c on c.category_id = p.product_category_id  inner join departments d on c.category_department_id = d.department_id  order by d.department_id, product_price_rank desc, product_dense_price_rank")
+
+var hiveResult2 = hc.sql("select c.customer_id, c.customer_fname, count(distinct(oi.order_item_product_id)) unique_products  from customers c   inner join orders o on o.order_customer_id = c.customer_id  inner join order_items oi on o.order_id = oi.order_item_order_id  group by c.customer_id, c.customer_fname  order by unique_products desc, c.customer_id   limit 10
+")
+
+sqlResult.registerTempTable("product_rank_result_temp");
+hc.sql("select * from product_rank_result_temp where product_price < 100").show();
+
+var topCustomers = hc.sql("select c.customer_id, c.customer_fname, count(distinct(oi.order_item_product_id)) unique_products  from customers c   inner join orders o on o.order_customer_id = c.customer_id  inner join order_items oi on o.order_id = oi.order_item_order_id  group by c.customer_id, c.customer_fname  order by unique_products desc, c.customer_id   limit 10  ");
+
+topCustomers.registerTempTable("top_cust");
+
+var topProducts = hc.sql("select distinct p.* from products p inner join order_items oi on oi.order_item_product_id = p.product_id inner join orders o on o.order_id = oi.order_item_order_id inner join top_cust tc on o.order_customer_id = tc.customer_id where p.product_price < 100");
+
+hc.sql("create table problem6.product_rank_result as select * from product_rank_result_temp where product_price < 100");
+
+
+hc.sql("create table problem 6.top_products as select distinct p.* from products p inner join order_items oi on oi.order_item_product_id = p.product_id inner join orders o on o.order_id = oi.order_item_order_id inner join top_cust tc on o.order_customer_id = tc.customer_id where p.product_price < 100");

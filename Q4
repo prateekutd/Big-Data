@@ -1,0 +1,67 @@
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--target-dir /user/cloudera/problem5/text \
+--fields-terminated-by '\t' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--m 1
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--target-dir /user/cloudera/problem5/avro \
+--as-avrodatafile \
+-m 1
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--target-dir /user/cloudera/problem5/parquet \
+--as-parquetfile \
+-m 1
+
+import com.databricks.spark.avro._
+
+var dataFile = sqlContext.read.avro("/user/cloudera/problem5/avro")
+sqlContext.setConf("spark.sql.parquet.compress.codec","snappy");
+dataFile.repartition(1).write.parquet("/user/cloudera/problem5/parquet-snappy-compress");
+
+dataFile.map(x => x(0)+"\t"+x(1)+"\t"+x(2)+"\t"+x(3)).take(5).foreach(println);
+
+dataFile.map(x => x(0)+"\t"+x(1)+"\t"+x(2)+"\t"+x(3)).saveAsTextFile("/user/cloudera/problem5/text-gzip-compress",classOf[org.apache.hadoop.io.compress.GzipCodec]);
+
+sequential file is a key value file
+dataFile.map(x=>(x(0).toString,x(0)+"\t"+x(1)+"\t"+x(2)+"\t"+x(3))).saveAsSequentialFile("/user/cloudera/problem5/sequence");
+
+dataFile.map(x => x(0)+"\t"+x(1)+"\t"+x(2)+"\t"+x(3)).saveAsTextFile("/user/cloudera/problem5/text-snappy-compress",classOf[org.apache.hadoop.io.compress.SnappyCodec]);
+
+var parquetDataFile = sqlContext.read.parquet("/user/cloudera/problem5/parquet-snappy-compress");
+sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed");
+parquetDataFile.write.parquet("/user/cloudera/problem5/parquet-no-compress");
+
+sqlContext.setConf("spark.sql.avro.compression.codec","snappy");
+parquetDataFile.write.parquet("/user/cloudera/problem5/avro-snappy");
+
+var avroData = sqlContext.read.avro("/user/cloudera/problem5/avro-snappy");
+avroData.toJSON.saveAsTextFile("/user/cloudera/problem5/json-no-compress");
+avroData.toJSON.saveAsTextFile("/user/cloudera/problem5/json-gzip",classOf[org.apache.hadoop.io.compress.GzipCodec]);
+
+var jsonData = sqlContext.read.json("/user/cloudera/problem5/json-gzip");
+jsonData.map(x =>x(0)+","+x(1)+","+x(2)+","+x(3)).saveAsTextFile("/user/cloudera/problem5/csv-gzip",classOf[org.apache.hadoop.io.compress.GzipCodec]));
+
+To read a sequence file
+hadoop fs -get /user/cloudera/problem5/sequence/part-00000
+cut -c-300 part-00000
+after this see the key and value
+var seqFile = sc.sequenceFile("/user/cloudera/problem5/sequence/",classOf[org.apache.hadoop.io.Text],classOf[org.apache.hadoop.io.Text]);
+ORC file requires value
+seqFile.map(x=>x._2.toString).take(5).foreach(println);
+seqFile.map(x=>{var d = x._2.toString.split("\t");
+(d(0),d(1),d(2),d(3))}).toDF().write.orc("/user/cloudera/problem5/orc")
